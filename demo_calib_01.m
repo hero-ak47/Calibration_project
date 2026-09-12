@@ -7,6 +7,8 @@
 %--Fine delay : + Day la do lech pha sau khi da bu tho (van con phan group delay chua bu chinh xac)
 %               + Duoc tinh thong qua goc pha trung binh cua tin hieu phat sau khi da bu group delay. Cac tin hieu sau khi bu group delay da nam gan voi tin hieu ly
 %                 tuong, viec tinh trung binh cong se lam do lech bu tru nhau, cang sat toi tin hieu ly tuong hon.
+
+% AMPLITUDE : Duoc tinh thong qua trung binh do lech bien do cua cac dap ung kenh cua tung subcarrier
 clear; clc; close all;
 rng(7);   % seed co dinh de ket qua lap lai duoc
 
