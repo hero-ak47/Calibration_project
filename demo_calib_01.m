@@ -1,41 +1,12 @@
-%% ==============================================================
-%  DEMO: Thuat toan Calibration pha cho tuyen phat Massive MIMO 5G
-%  Tham khao: 
-%   - Tran et al., "Real-time Calibration for Digital Beamforming in 
-%     5G Systems With Experiments on Testbed", IEEE ATC 2022 
-%     (DOI: 10.1109/ATC55345.2022.9943013)
-%   - Bang doc quyen sang che VN so 1-0052769: "Phuong phap dieu chinh 
-%     pha tin hieu cho tuyen phat ung dung cho he thong thu phat song 
-%     vo tuyen 5G"
-%
-%  MUC TIEU DEMO
-%  --------------
-%  Ca bai bao va bang sang che deu mo ta thuat toan qua 3 buoc:
-%    B1: Phat - thu tin hieu tham chieu (pilot ZC) qua coupler/duong 
-%        phan hoi noi bo.
-%    B2: Uoc luong dap ung kenh H tren tung sub-carrier, tu do suy ra 
-%        do lech pha gay boi phan cung.
-%    B3: Tinh he so bu pha va ap dung cho du lieu phat.
-%
-%  Trong thuc te, do lech pha do phan cung gay ra gom 2 thanh phan:
-%    (a) GROUP DELAY  - dich pha TUYEN TINH theo sub-carrier k (do do 
-%        dai duong truyen/cap khac nhau giua cac chain)
-%    (b) FINE PHASE   - dich pha HANG SO, khong phu thuoc k (do lech 
-%        pha LO/mixer/PA)
-%  Neu chi bu MOT thanh phan (vi du chi do pha tai 1 sub-carrier trung 
-%  tam roi ap dung cho ca bang thong), phan GROUP DELAY se khong duoc 
-%  bu -> loi con lai tang dan khi ra xa sub-carrier do -> beam squint.
-%  Day chinh la buoc "an" ma nguoi dung nghi la tac gia co lam nhung 
-%  khong noi ro trong phan mo ta rut gon.
-%
-%  Demo nay:
-%   1. Mo phong N_ant chuoi RF voi loi phan cung "that" (tau_n, phi0_n)
-%   2. Uoc luong 2 buoc: Group delay (tho) truoc, Fine phase (tinh) sau
-%      - dung dung cong thuc (2)-(5) trong bai bao IEEE ATC 2022
-%   3. So sanh 3 kich ban bu pha: Khong calib / Chi Fine-phase / Day du
-%   4. Ve sai pha con lai theo sub-carrier va bup song beamforming
-% ================================================================
-
+%% Calibration bu pha va bien do
+% PHASE ( lech thoi gian tau)
+% - Gom 2 thanh phan Group delay va Fine delay
+% --Group delay: + Duoc tinh thong qua trung binh do lech pha cua cac dap ung kenh cua tung subcarrier
+%                + Voi cung 1 do lech thoi gian tau, do lech pha tren tung song mang con ( Yk=Xk⋅e^(−j2πfk​τ)) tuyen tinh theo k. Nghia la cac song mang con
+%                  co tan so khac nhau nen do lech pha se ti le voi k (tan so cang cao thi lech pha cang lon)
+%--Fine delay : + Day la do lech pha sau khi da bu tho (van con phan group delay chua bu chinh xac)
+%               + Duoc tinh thong qua goc pha trung binh cua tin hieu phat sau khi da bu group delay. Cac tin hieu sau khi bu group delay da nam gan voi tin hieu ly
+%                 tuong, viec tinh trung binh cong se lam do lech bu tru nhau, cang sat toi tin hieu ly tuong hon.
 clear; clc; close all;
 rng(7);   % seed co dinh de ket qua lap lai duoc
 
@@ -61,11 +32,15 @@ X = X ./ abs(X);                         % chuan hoa bien do = 1
 %     thuat toan uoc luong - chi dung de kiem chung ket qua)
 true_tau_n  = [0, 1.7, -2.3, 3.1, 0.6, -1.2, 2.8, -0.4];        % mau (group delay)
 true_phi0_n = [0, 35, -60, 120, -150, 80, -25, 170] * pi/180;    % rad (fine phase)
+% LECH BIEN DO: do dung sai gain PA, suy hao cap/connector khac nhau giua
+% cac chain - la mot hang so (khong phu thuoc k) rieng cho tung anten,
+% tuong tu ban chat voi fine phase nhung tac dong len BIEN DO thay vi PHA
+true_A_n    = [1.0, 0.82, 1.18, 0.90, 1.10, 0.78, 1.22, 0.95];  % (khong don vi, ty le so voi chain 1)
 
 fprintf('--- GROUND TRUTH (loi phan cung that, chi de doi chieu) ---\n');
 for a = 1:N_ant
-    fprintf('  Chain %d: tau = %6.2f mau | phi0 = %7.2f do\n', ...
-        a, true_tau_n(a), true_phi0_n(a)*180/pi);
+    fprintf('  Chain %d: tau = %6.2f mau | phi0 = %7.2f do | A = %5.2f\n', ...
+        a, true_tau_n(a), true_phi0_n(a)*180/pi, true_A_n(a));
 end
 
 %% 4. BUOC 1 (mo phong): PHAT-THU TIN HIEU THAM CHIEU QUA COUPLER, L LAN LAP
@@ -74,7 +49,9 @@ Ybar  = zeros(N_ant, N_sub);      % Y_n^k trung binh sau L lan (cong thuc (3))
 
 for a = 1:N_ant
     acc = zeros(1, N_sub);
-    H_true = exp(1j*true_phi0_n(a)) .* exp(1j*2*pi*k_idx*true_tau_n(a)/M);
+    % Dap ung kenh THAT gio gom ca 3 thanh phan: bien do A_n, fine phase
+    % phi0_n (hang so), va group delay tau_n (tuyen tinh theo k)
+    H_true = true_A_n(a) * exp(1j*true_phi0_n(a)) .* exp(1j*2*pi*k_idx*true_tau_n(a)/M);
     for it = 1:L
         noise = (randn(1,N_sub) + 1j*randn(1,N_sub))/sqrt(2) * 10^(-SNR_dB/20);
         Y = X .* H_true + noise;
@@ -89,6 +66,7 @@ Hhat = Ybar ./ X;      % H_n^k = Ybar / X   (cong thuc (2))
 delta_k  = 8;                      % khoang cach sub-carrier de uoc luong group delay
 tau_hat  = zeros(1, N_ant);
 phi0_hat = zeros(1, N_ant);
+A_hat    = zeros(1, N_ant);        % <-- MOI: uoc luong bien do tung chain
 
 for a = 1:N_ant
     h = Hhat(a,:);
@@ -97,16 +75,21 @@ for a = 1:N_ant
     phase_diff = angle(mean(prod_term));
     tau_hat(a) = -M/(2*pi*delta_k) * phase_diff;
 
-    % --- (b) BU GROUP DELAY, UOC LUONG PHA DU (FINE) ---
+    % --- (b) BU GROUP DELAY, UOC LUONG PHA DU (FINE) VA BIEN DO ---
     h_comp    = h .* exp(-1j*2*pi*k_idx*tau_hat(a)/M);
+    % Sau khi bu group delay, h_comp[k] ~ A_n * e^{j*phi0_n} (hang so
+    % voi moi k, chi con lech boi nhieu) -> trung binh phasor (coherent
+    % averaging) cho ca goc (angle) LAN do lon (abs) cung mot cong thuc:
     phi0_hat(a) = angle(mean(h_comp));
+    A_hat(a)    = abs(mean(h_comp));      % <-- MOI: uoc luong bien do
 end
 
 fprintf('\n--- KET QUA UOC LUONG (so sanh voi ground truth) ---\n');
 for a = 1:N_ant
-    fprintf('  Chain %d: tau_hat = %6.2f mau (loi %+.3f) | phi0_hat = %7.2f do (loi %+.2f do)\n', ...
+    fprintf('  Chain %d: tau_hat=%6.2f mau (loi %+.3f) | phi0_hat=%7.2f do (loi %+.2f do) | A_hat=%5.3f (loi %+.2f%%)\n', ...
         a, tau_hat(a), tau_hat(a)-true_tau_n(a), ...
-        phi0_hat(a)*180/pi, (phi0_hat(a)-true_phi0_n(a))*180/pi);
+        phi0_hat(a)*180/pi, (phi0_hat(a)-true_phi0_n(a))*180/pi, ...
+        A_hat(a), 100*(A_hat(a)-true_A_n(a))/true_A_n(a));
 end
 
 %% 6. BUOC 3: TINH 3 BO TRONG SO CALIBRATION DE SO SANH
@@ -119,8 +102,14 @@ k0          = round(N_sub/2);
 phi_center  = angle(Hhat(:, k0));              % N_ant x 1
 W_fineOnly  = repmat(exp(-1j*phi_center), 1, N_sub);
 
-% (3) Bu DAY DU: group delay + fine phase (dung phuong phap paper/patent)
-W_full = exp(-1j*(2*pi*k_idx.*tau_hat.'/M + phi0_hat.'));
+% (3a) Bu DAY DU nhung CHI PHA: group delay + fine phase (giong paper/patent
+%      goc, CHUA bu bien do) - dung de so sanh rieng anh huong cua bien do
+W_full_phaseOnly = exp(-1j*(2*pi*k_idx.*tau_hat.'/M + phi0_hat.'));
+
+% (3b) Bu DAY DU CA PHA VA BIEN DO (nang cap so voi paper/patent goc):
+%      nhan them he so 1/A_hat de "keo" moi chain ve cung mot bien do
+%      chuan hoa - tan dung luon |Hhat| von da co san, khong can do them
+W_full = (1 ./ A_hat.') .* W_full_phaseOnly;
 
 %% 7. SAI PHA CON LAI THEO SUB-CARRIER SAU KHI AP DUNG TUNG W
 resid_none     = angle(Hhat .* W_none)     * 180/pi;
@@ -165,7 +154,9 @@ for ik = 1:numel(k_eval_list)
             case 3, Wk = W_full(:,k);     lbl = 'Group delay + Fine';
         end
         % Dap ung phan cung THAT tai sub-carrier k (dung de kiem chung)
-        H_true_k = exp(1j*true_phi0_n.') .* exp(1j*2*pi*(k-1)*true_tau_n.'/M);
+        % - gio da gom ca true_A_n (bien do that) de bup song phan anh
+        %   dung ca 3 loai loi phan cung: delay + fine phase + bien do
+        H_true_k = true_A_n.' .* exp(1j*true_phi0_n.') .* exp(1j*2*pi*(k-1)*true_tau_n.'/M);
         g = H_true_k .* Wk .* a_theta;         % dap ung tong hop moi anten
         AFpat = zeros(size(theta_scan));
         for it = 1:numel(theta_scan)
@@ -186,5 +177,34 @@ else
         'EdgeColor', 'none', 'HorizontalAlignment', 'center', 'FontWeight', 'bold');
 end
 
-fprintf('\nHoan tat demo. Xem 2 figure: (1) sai pha con lai theo sub-carrier, ');
-fprintf('(2) bup song phat tai 3 vi tri trong bang thong.\n');
+%% 9. RIENG BIET: ANH HUONG CUA VIEC BU/KHONG BU BIEN DO LEN NULL & SIDELOBE
+% O day CO DINH pha da bu day du (group delay + fine phase, dung nhu nhau
+% o ca 2 truong hop) - CHI thay doi co bu bien do hay khong - de tach
+% rieng dung anh huong cua bien do, khong lan voi anh huong cua pha.
+k_center = round(N_sub/2);
+H_true_center = true_A_n.' .* exp(1j*true_phi0_n.') .* exp(1j*2*pi*(k_center-1)*true_tau_n.'/M);
+
+figure('Name','Anh huong cua bu bien do len sidelobe/null (da bu pha day du)');
+hold on;
+g_noAmp   = H_true_center .* W_full_phaseOnly(:,k_center) .* a_theta;   % pha dung, bien do CHUA bu
+g_withAmp = H_true_center .* W_full(:,k_center)           .* a_theta;   % pha + bien do deu da bu
+labels9 = {'Da bu pha, CHUA bu bien do','Da bu ca pha VA bien do'};
+gs = {g_noAmp, g_withAmp};
+for c = 1:2
+    AFpat = zeros(size(theta_scan));
+    for it = 1:numel(theta_scan)
+        sv = exp(-1j*2*pi*d_over_lambda*n_ant_idx*sin(theta_scan(it)));
+        AFpat(it) = abs(sum(gs{c} .* conj(sv)))^2;
+    end
+    plot(theta_scan_deg, 10*log10(AFpat/max(AFpat)+eps), 'LineWidth', 1.3, 'DisplayName', labels9{c});
+end
+ylim([-40 0]); grid on; legend('Location','south');
+xlabel('Goc (do)'); ylabel('Cong suat chuan hoa (dB)');
+title('Bu bien do khong doi HUONG bup song, chi lam null sau hon / sidelobe deu hon');
+
+fprintf('\n--- SO SANH RIENG ANH HUONG CUA BU BIEN DO (pha da bu day du ca 2 truong hop) ---\n');
+fprintf('  (Xem figure 3: huong dinh bup song giu nguyen -%d do o ca 2, chi khac null/sidelobe)\n', abs(theta_target_deg));
+
+fprintf('\nHoan tat demo. Xem 3 figure: (1) sai pha con lai theo sub-carrier, ');
+fprintf('(2) bup song phat tai 3 vi tri trong bang thong (da gom ca loi bien do), ');
+fprintf('(3) anh huong rieng cua viec bu bien do len null/sidelobe.\n');
